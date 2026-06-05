@@ -35,11 +35,11 @@ Codex CLI:
 {
   "commitGen.provider": "codex",
   "commitGen.codexCommand": "codex",
-  "commitGen.codexModel": "gpt-5.4-nano",
+  "commitGen.codexModel": "gpt-5.3-codex-spark",
   "commitGen.codexArgs": [
     "exec",
-    "--ask-for-approval",
-    "never",
+    "-c",
+    "model_reasoning_effort=\"low\"",
     "--sandbox",
     "read-only",
     "--skip-git-repo-check",
@@ -60,7 +60,7 @@ Claude Code CLI:
 }
 ```
 
-Commit Gen automatically appends `--model <model>` to the selected CLI args. If your account or CLI does not support the default model, set `commitGen.codexModel` or `commitGen.claudeModel` to another lightweight model supported by your environment. Set the model value to an empty string only when you intentionally want to use the CLI's configured default.
+Commit Gen automatically adds `--model <model>` to the selected CLI args. For Codex, the model option is inserted before the `-` prompt marker so `codex exec` treats it as an option. The default Codex args also force `model_reasoning_effort` to `low`, avoiding expensive user-level Codex defaults for this small task. If your account or CLI does not support the default model, set `commitGen.codexModel` or `commitGen.claudeModel` to another lightweight model supported by your environment. Set the model value to an empty string only when you intentionally want to use the CLI's configured default.
 
 Common options:
 
@@ -79,6 +79,7 @@ If an argument contains `${prompt}`, Commit Gen replaces it with the generated p
 ```sh
 npm install
 npm run compile
+npm run package
 ```
 
 Press F5 in VS Code and run the `Run Extension` configuration.

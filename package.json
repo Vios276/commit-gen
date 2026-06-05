@@ -2,7 +2,7 @@
   "name": "commit-gen",
   "displayName": "Commit Gen",
   "description": "Generate Conventional Commits commit messages from Git changes using Codex or Claude Code CLI.",
-  "version": "0.0.1",
+  "version": "0.0.6",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -33,7 +33,7 @@
         "command": "commitGen.generateCommitMessage",
         "title": "Generate Commit Message",
         "category": "Commit Gen",
-        "icon": "$(git-commit)"
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
@@ -64,8 +64,8 @@
         },
         "commitGen.codexModel": {
           "type": "string",
-          "default": "gpt-5.4-nano",
-          "description": "Model passed to Codex CLI with --model. Use an empty string to let Codex choose its configured default."
+          "default": "gpt-5.3-codex-spark",
+          "description": "Model passed to Codex CLI with --model. The default Spark model is intended for lightweight commit-message generation. Use an empty string to let Codex choose its configured default."
         },
         "commitGen.codexArgs": {
           "type": "array",
@@ -74,15 +74,15 @@
           },
           "default": [
             "exec",
-            "--ask-for-approval",
-            "never",
+            "-c",
+            "model_reasoning_effort=\"low\"",
             "--sandbox",
             "read-only",
             "--skip-git-repo-check",
             "--ephemeral",
             "-"
           ],
-          "description": "Arguments passed to the Codex CLI. The prompt is sent to stdin unless an argument contains ${prompt}."
+          "description": "Arguments passed to the Codex CLI. The prompt is sent to stdin unless an argument contains ${prompt}. Keep options before the '-' prompt marker."
         },
         "commitGen.claudeCommand": {
           "type": "string",
@@ -154,7 +154,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --skip-license --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

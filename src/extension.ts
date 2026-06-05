@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 type CliProvider = 'codex' | 'claude';
@@ -101,21 +102,25 @@ function readConfig(): CommitGenConfig {
   const command = provider === 'claude'
     ? config.get<string>('claudeCommand', 'claude')
     : config.get<string>('codexCommand', 'codex');
-  const model = provider === 'claude'
+  const rawModel = provider === 'claude'
     ? config.get<string>('claudeModel', 'claude-haiku-4-5-20251001')
-    : config.get<string>('codexModel', 'gpt-5.4-nano');
-  const args = provider === 'claude'
+    : config.get<string>('codexModel', 'gpt-5.3-codex-spark');
+  const model = provider === 'codex' ? normalizeCodexModel(rawModel) : rawModel;
+  const rawArgs = provider === 'claude'
     ? config.get<string[]>('claudeArgs', ['-p'])
     : config.get<string[]>('codexArgs', [
       'exec',
-      '--ask-for-approval',
-      'never',
+      '-c',
+      'model_reasoning_effort="low"',
       '--sandbox',
       'read-only',
       '--skip-git-repo-check',
       '--ephemeral',
       '-'
     ]);
+  const args = provider === 'codex'
+    ? ensureCodexLowReasoningArgs(removeLegacyCodexArgs(rawArgs))
+    : rawArgs;
 
   return {
     provider,
@@ -129,6 +134,56 @@ function readConfig(): CommitGenConfig {
     timeoutMs: config.get<number>('timeoutMs', 120000),
     customInstructions: config.get<string>('customInstructions', '')
   };
+}
+
+function normalizeCodexModel(model: string): string {
+  if (model.trim() === 'gpt-5.4-nano') {
+    return 'gpt-5.3-codex-spark';
+  }
+
+  return model;
+}
+
+function removeLegacyCodexArgs(args: string[]): string[] {
+  const sanitized: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--ask-for-approval' || arg === '-a') {
+      const nextArg = args[index + 1];
+
+      if (nextArg && !nextArg.startsWith('-')) {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (arg.startsWith('--ask-for-approval=') || arg.startsWith('-a=')) {
+      continue;
+    }
+
+    sanitized.push(arg);
+  }
+
+  return sanitized;
+}
+
+function ensureCodexLowReasoningArgs(args: string[]): string[] {
+  if (hasCodexReasoningArg(args)) {
+    return args;
+  }
+
+  return insertBeforePromptMarker(args, ['-c', 'model_reasoning_effort="low"']);
+}
+
+function hasCodexReasoningArg(args: string[]): boolean {
+  return args.some((arg, index) => (
+    arg.includes('model_reasoning_effort')
+    || arg.includes('reasoning_effort')
+    || (index > 0 && (args[index - 1] === '-c' || args[index - 1] === '--config') && arg.includes('reasoning'))
+  ));
 }
 
 async function pickRepository(): Promise<Repository> {
@@ -303,16 +358,49 @@ function buildPrompt(gitContext: string, currentMessage: string, config: CommitG
 }
 
 async function runSelectedCli(config: CommitGenConfig, cwd: string, prompt: string): Promise<string> {
-  const { args, stdin } = materializePrompt(addModelArgs(config.args, config.model), prompt, config.model);
+  const outputFile = shouldCaptureCodexLastMessage(config)
+    ? path.join(os.tmpdir(), `commit-gen-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
+    : undefined;
+  const processArgs = outputFile
+    ? insertBeforePromptMarker(addModelArgs(config.args, config.model), ['--output-last-message', outputFile])
+    : addModelArgs(config.args, config.model);
+  const { args, stdin } = materializePrompt(processArgs, prompt, config.model);
   output.appendLine(`Running ${config.provider} provider: ${config.command} ${args.join(' ')}`);
 
-  const result = await runProcess(config.command, args, cwd, stdin, config.timeoutMs, 1024 * 1024);
+  try {
+    const result = await runProcess(config.command, args, cwd, stdin, config.timeoutMs, 1024 * 1024);
 
-  if (result.stderr.trim()) {
-    output.appendLine(result.stderr.trim());
+    if (result.stderr.trim()) {
+      output.appendLine(result.stderr.trim());
+    }
+
+    if (outputFile) {
+      const lastMessage = await fs.readFile(outputFile, 'utf8');
+
+      if (lastMessage.trim()) {
+        return lastMessage;
+      }
+    }
+
+    return result.stdout;
+  } finally {
+    if (outputFile) {
+      await fs.rm(outputFile, { force: true });
+    }
   }
+}
 
-  return result.stdout;
+function shouldCaptureCodexLastMessage(config: CommitGenConfig): boolean {
+  return config.provider === 'codex' && !hasOutputLastMessageArg(config.args);
+}
+
+function hasOutputLastMessageArg(args: string[]): boolean {
+  return args.some((arg, index) => (
+    arg === '--output-last-message'
+    || arg === '-o'
+    || arg.startsWith('--output-last-message=')
+    || (index > 0 && (args[index - 1] === '--output-last-message' || args[index - 1] === '-o'))
+  ));
 }
 
 function addModelArgs(args: string[], model: string): string[] {
@@ -322,7 +410,7 @@ function addModelArgs(args: string[], model: string): string[] {
     return args;
   }
 
-  return [...args, '--model', trimmedModel];
+  return insertBeforePromptMarker(args, ['--model', trimmedModel]);
 }
 
 function hasModelArg(args: string[]): boolean {
@@ -333,6 +421,20 @@ function hasModelArg(args: string[]): boolean {
     || arg.includes('${model}')
     || (index > 0 && (args[index - 1] === '--model' || args[index - 1] === '-m'))
   ));
+}
+
+function insertBeforePromptMarker(args: string[], insertedArgs: string[]): string[] {
+  const promptMarkerIndex = args.findIndex((arg) => arg === '-' || arg.includes('${prompt}'));
+
+  if (promptMarkerIndex === -1) {
+    return [...args, ...insertedArgs];
+  }
+
+  return [
+    ...args.slice(0, promptMarkerIndex),
+    ...insertedArgs,
+    ...args.slice(promptMarkerIndex)
+  ];
 }
 
 function materializePrompt(args: string[], prompt: string, model: string): { args: string[]; stdin: string } {
