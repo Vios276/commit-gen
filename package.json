@@ -1,0 +1,165 @@
+{
+  "name": "commit-gen",
+  "displayName": "Commit Gen",
+  "description": "Generate Conventional Commits commit messages from Git changes using Codex or Claude Code CLI.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Source Control",
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:commitGen.generateCommitMessage"
+  ],
+  "enabledApiProposals": [
+    "contribSourceControlInputBoxMenu"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "commitGen.generateCommitMessage",
+        "title": "Generate Commit Message",
+        "category": "Commit Gen",
+        "icon": "$(git-commit)"
+      }
+    ],
+    "menus": {
+      "scm/inputBox": [
+        {
+          "command": "commitGen.generateCommitMessage",
+          "when": "scmProvider == git",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Commit Gen",
+      "properties": {
+        "commitGen.provider": {
+          "type": "string",
+          "enum": [
+            "codex",
+            "claude"
+          ],
+          "default": "codex",
+          "description": "CLI provider used to generate commit messages."
+        },
+        "commitGen.codexCommand": {
+          "type": "string",
+          "default": "codex",
+          "description": "Executable used when Commit Gen provider is codex."
+        },
+        "commitGen.codexModel": {
+          "type": "string",
+          "default": "gpt-5.4-nano",
+          "description": "Model passed to Codex CLI with --model. Use an empty string to let Codex choose its configured default."
+        },
+        "commitGen.codexArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "exec",
+            "--ask-for-approval",
+            "never",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "-"
+          ],
+          "description": "Arguments passed to the Codex CLI. The prompt is sent to stdin unless an argument contains ${prompt}."
+        },
+        "commitGen.claudeCommand": {
+          "type": "string",
+          "default": "claude",
+          "description": "Executable used when Commit Gen provider is claude."
+        },
+        "commitGen.claudeModel": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Model passed to Claude Code CLI with --model. The default Claude Haiku model is intended for simple low-cost generation."
+        },
+        "commitGen.claudeArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-p"
+          ],
+          "description": "Arguments passed to the Claude Code CLI. The prompt is sent to stdin unless an argument contains ${prompt}."
+        },
+        "commitGen.diffMode": {
+          "type": "string",
+          "enum": [
+            "staged",
+            "stagedOrWorkingTree",
+            "workingTree"
+          ],
+          "default": "stagedOrWorkingTree",
+          "description": "Git changes used as commit-message context."
+        },
+        "commitGen.language": {
+          "type": "string",
+          "default": "en",
+          "description": "Language for the generated commit message, for example en or ko."
+        },
+        "commitGen.includeBody": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "never",
+            "always"
+          ],
+          "default": "auto",
+          "description": "Controls whether the generated commit message may include a body."
+        },
+        "commitGen.maxDiffChars": {
+          "type": "number",
+          "default": 12000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Maximum number of Git context characters sent to the CLI."
+        },
+        "commitGen.timeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 5000,
+          "maximum": 600000,
+          "description": "Maximum time to wait for the selected CLI."
+        },
+        "commitGen.customInstructions": {
+          "type": "string",
+          "default": "",
+          "description": "Additional style or policy instructions appended to the generation prompt."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.101.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.8.0"
+  }
+}
